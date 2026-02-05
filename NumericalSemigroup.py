@@ -48,10 +48,10 @@ def minimize_relations(relations_list):
     return minimal_gens
 
 def share_generator(f1, f2):
-        """
-        Devuelve True si dos factorizaciones usan algún generador común.
-        """
-        return any(a > 0 and b > 0 for a, b in zip(f1, f2))
+    """
+    Devuelve True si dos factorizaciones usan algún generador común.
+    """
+    return any(a > 0 and b > 0 for a, b in zip(f1, f2))
 
 def distance(x, y):
     """
@@ -1004,36 +1004,59 @@ class NumericalSemigroup:
         fig.show()
         
     def tame_degree(self, n=None):
-        """Grado de amansamiento t(n) o t(S)"""
+        """
+        Calcula el grado de amansamiento.
+         - Si se da n: calcula t(n).
+         - Si n es None: calcula t(S).
+        """  
+        min_gens = self.minimal_generators()
+
+        # Caso 1: grado de amansamiento del semigrupo
         if n is None:
-            gens = self.generators
-            t = 0
-            for i in range(len(gens)):
-                for j in range(len(gens)):
-                    if i != j:
-                        for w in self.apery(gens[j]):
-                            t = max(t, self.tame_degree(gens[i] + w))
-            return t
+            if 1 in min_gens: 
+                return 0
+            
+            # Obtenemos elementos de Apéry de todos los generadores
+            apery_union = set()
+            for g in min_gens:
+                apery_union.update(self.apery(g))
+            
+            # Generamos candidatos y devolvemos el máximo t(s)
+            candidates = {w + g for w in apery_union for g in min_gens}
+            if not candidates: 
+                return 0
+            
+            return max((self.tame_degree(c) for c in candidates), default=0)
 
-        Z = self.factorizations(n)
-        if not Z:
-            return 0
-
-        gens = self.generators
-        t_n = 0
-
-        for i in range(len(gens)):
-            Z_in  = [z for z in Z if z[i] > 0]
-            Z_out = [z for z in Z if z[i] == 0]
-
-            if not Z_in or not Z_out:
-                continue
-
-            t_i = max(
-                min(distance(z_bad, z_good) for z_good in Z_in)
-                for z_bad in Z_out
-            )
-
-            t_n = max(t_n, t_i)
-
-        return t_n
+        # Caso 2: grado de amansamiento de un elemento
+        else:
+            Z = self.factorizations(n)
+            if len(Z) <= 1:
+                return 0
+                
+            max_tame = 0
+            num_gens = len(min_gens)
+            
+            # Recorremos cada generador n_i, y calculamos t_i(n)
+            for i in range(num_gens):
+                # Dividimos Z: los que no usan el generador i (target) vs los que sí (rest)
+                target = [z for z in Z if z[i] == 0]
+                rest = [z for z in Z if z[i] != 0]
+                
+                # Si alguno de los subconjuntos es vacío, t_i(n) = 0
+                if not target or not rest: 
+                    continue
+                    
+                # Calculamos t_i(n) definido como el máximo de las distancias de x al conjunto rest.
+                current_max = 0
+                for x in target:
+                    min_dist = min(distance(x, z) for z in rest)
+                    # Actualizamos el máximo local encontrado para este generador
+                    if min_dist > current_max:
+                        current_max = min_dist
+                
+                # Actualizamos el grado de amansamiento total
+                if current_max > max_tame:
+                    max_tame = current_max
+                    
+            return max_tame
