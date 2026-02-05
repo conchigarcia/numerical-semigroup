@@ -1,2 +1,9 @@
 # Entorno virtual
 venv/
+lib/
+
+# Archivos de prueba
+pruebas.ipynb
+
+# Archivos de caché de Python
+__pycache__/

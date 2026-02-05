@@ -1,5 +1,6 @@
 import math
 import networkx as nx
+import numpy as np
 import plotly.graph_objects as go
 from pyvis.network import Network
 from sympy import symbols, groebner
@@ -51,7 +52,14 @@ def share_generator(f1, f2):
         Devuelve True si dos factorizaciones usan algún generador común.
         """
         return any(a > 0 and b > 0 for a, b in zip(f1, f2))
-    
+
+def distance(x, y):
+    """
+    Devuelve la distancia entre x e y: d(x,y) = max(|x|,|y|) - |x ∧ y|
+    """
+    common = [min(xi, yi) for xi, yi in zip(x, y)]
+    return max(sum(x), sum(y)) - sum(common)
+
 class NumericalSemigroup:
     def __init__(self, *args):
         """
@@ -876,53 +884,125 @@ class NumericalSemigroup:
                 
         return max_d
 
-    def distance(self, x, y):
-        """
-        Devuelve la distancia entre x e y d(x,y) = max(|x|,|y|) - |x ∧ y|
-        """
-        common = [min(xi, yi) for xi, yi in zip(x, y)]
-        return max(sum(x), sum(y)) - sum(common)
-
     def catenary_degree(self, n=None):
         """
         Calcula el grado de catenariedad.
          - Si se da n: calcula c(n).
-         - Si n es None: calcula c(S)
+         - Si n es None: calcula c(S).
         """
+        # Caso 1: grado de catenariedad del semigrupo
         if n is None:
-            bettis = self.betti_elements()
-            return max((self.catenary_degree(b) for b in bettis), default=0)
+            # Se devuelve elmáximo de los grados de catenariedad de los elementos de Betti
+            betti = self.betti_elements()
+            return max((self.catenary_degree(b) for b in betti), default=0)
+        
+        # Caso 2: grado de catenariedad de un elemento
+        else:
+            # Obtenemos las factorizaciones del elemento n
+            Z = self.factorizations(n)
+            n_facts = len(Z)
+            
+            # Si hay 0 o 1 factorización, el grado de catenariedad es 0
+            if n_facts <= 1:
+                return 0
+        
+            # Generamos todas las aristas posibles del grafo completo con pesos según la distancia entre factorizaciones
+            weighted_edges = []
+            for i in range(n_facts):
+                for j in range(i + 1, n_facts):
+                    d = distance(Z[i], Z[j])
+                    weighted_edges.append((i, j, d))
 
+            # Construimos el grafo con pesos
+            G = nx.Graph()
+            G.add_weighted_edges_from(weighted_edges)
+
+            # Calculamos el árbol generador de peso mínimo usando el algoritmo de Kruskal
+            mst = nx.minimum_spanning_tree(G, algorithm='kruskal')
+            
+            if not mst.edges:
+                return 0
+                
+            # El grado catenario es el peso máximo de ese árbol de expansión mínima
+            return max(data['weight'] for u, v, data in mst.edges(data=True))
+    
+    def plot_catenary_graph(self, n):
+        """
+        Dibuja el grafo completo de factorizaciones destacando el árbol generador de peso mínimo.
+        """
         Z = self.factorizations(n)
-        if len(Z) <= 1:
-            return 0
+        n_facts = len(Z)
 
-        dist = {}
-        distances = set()
-        idx = range(len(Z))
+        # Construimos el grafo completo con pesos según la distancia entre factorizaciones
+        G = nx.Graph()
+        for i in range(n_facts):
+            G.add_node(i, label=str(Z[i]))
+            for j in range(i + 1, n_facts):
+                d = distance(Z[i], Z[j])
+                G.add_edge(i, j, weight=d)
 
-        for i, j in itertools.combinations(idx, 2):
-            d = self.distance(Z[i], Z[j])
-            dist[(i, j)] = dist[(j, i)] = d
-            distances.add(d)
+        # Calculamos el árbol generador de peso mínimo
+        arbol = nx.minimum_spanning_tree(G, algorithm='kruskal')
+        aristas_arbol = set(frozenset((u, v)) for u, v in arbol.edges())
 
-        def is_connected(N):
-            visited = {0}
-            stack = [0]
-            while stack:
-                u = stack.pop()
-                for v in idx:
-                    if v not in visited and dist.get((u, v), 0) <= N:
-                        visited.add(v)
-                        stack.append(v)
-            return len(visited) == len(Z)
+        # Posicionamiento de nodos
+        pos = nx.spring_layout(G, k=0.15, seed=42)
+        fig = go.Figure()
 
-        for N in sorted(distances):
-            if is_connected(N):
-                return N
+        # Listas para separar visualmente: árbol (rojo) vs resto (gris)
+        x_rojo, y_rojo, x_gris, y_gris = [], [], [], []
+        label_x, label_y, label_text = [], [], []
+        hover_texts = []
 
-        return 0
+        for u, v, data in G.edges(data=True):
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
 
+            # Guardamos coordenadas para la etiqueta del peso
+            label_x.append((x0 + x1) / 2)
+            label_y.append((y0 + y1) / 2)
+            label_text.append(str(data['weight']))
+            mensaje = f"La distancia entre {Z[u]} y {Z[v]} es {data['weight']}"
+            hover_texts.append(mensaje)
+
+            # Separamos las coordenadas según si es arista del árbol generador o no
+            if frozenset((u, v)) in aristas_arbol:
+                x_rojo.extend([x0, x1, None])
+                y_rojo.extend([y0, y1, None])
+            else:
+                x_gris.extend([x0, x1, None])
+                y_gris.extend([y0, y1, None])
+      
+        # Traza 1: aristas normales (gris)
+        fig.add_trace(go.Scatter(x=x_gris, y=y_gris, mode='lines',
+                                 line=dict(width=1, color='lightgrey'), hoverinfo='none'))
+
+        # Traza 2: aristas del árbol generador (rojo)
+        fig.add_trace(go.Scatter(x=x_rojo, y=y_rojo, mode='lines', name='Árbol Generador',
+                                 line=dict(width=2, color='#EF553B'), hoverinfo='name'))
+
+        # Traza 3: etiquetas de peso
+        fig.add_trace(go.Scatter(x=label_x, y=label_y, mode='text', text=label_text,
+                                 textposition="middle center", hovertext=hover_texts, hoverinfo='text',
+                                 textfont=dict(size=14, color='black'), 
+                                 showlegend=False))
+
+        # Traza 4: nodos
+        node_x = [pos[node][0] for node in G.nodes()]
+        node_y = [pos[node][1] for node in G.nodes()]
+        node_text = [G.nodes[node]['label'] for node in G.nodes()]
+
+        fig.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text',
+                                 text=node_text, textposition="top center", hoverinfo='text',
+                                 marker=dict(size=12, color='#636EFA', line=dict(width=2, color='DarkSlateGrey')),
+                                 name='Factorizaciones'))
+
+        fig.update_layout(title=dict(text=f"Grafo de Factorizaciones de {n}", x=0.5, xanchor='center'),
+                          plot_bgcolor='white', showlegend=False,
+                          xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                          yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+        fig.show()
+        
     def tame_degree(self, n=None):
         """Grado de amansamiento t(n) o t(S)"""
         if n is None:
@@ -950,7 +1030,7 @@ class NumericalSemigroup:
                 continue
 
             t_i = max(
-                min(self.distance(z_bad, z_good) for z_good in Z_in)
+                min(distance(z_bad, z_good) for z_good in Z_in)
                 for z_bad in Z_out
             )
 
