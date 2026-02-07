@@ -541,8 +541,8 @@ class NumericalSemigroup:
             # Filtra: un candidato x pertenece a Apery(m) si x in S x - m not in en S
             apery = [x for x in candidatos if (x - m) not in self]
 
-            return tuple(apery)
-        
+            return tuple(apery)      
+ 
     def factorizations(self, n):
         """
         Devuelve una tupla de tuplas con todas las formas de escribir n
@@ -1060,3 +1060,56 @@ class NumericalSemigroup:
                     max_tame = current_max
                     
             return max_tame
+
+    def omega_primality(self, n=None):
+        """
+        Calcula la omega-primalidad.
+         - Si se da n: calcula omega(S, n).
+         - Si n es None: calcula omega(S).
+        """  
+        min_gens = self.minimal_generators()
+
+        # Caso 1: omega-primalidad del semigrupo
+        if n is None:
+            # Definición global: máximo de la omega de los generadores minimales
+            return max((self.omega_primality(g) for g in min_gens), default=0)
+
+        # Caso 2: omega-primalidad de un elemento n
+        else:
+            if n not in self:
+                raise ValueError(f"El elemento {n} no pertenece al semigrupo.")
+                
+            # Obtenemos la unión de los conjuntos de Apéry de todos los generadores minimales
+            apery_union = set()
+            for g in min_gens:
+                apery_union.update(self.apery(g))
+            
+            # Generamos candidatos: n + w, donde w está en la unión de los Apéry
+            candidates = {n + w for w in apery_union}
+            
+            max_omega = 0
+            
+            # Analizamos las factorizaciones de cada candidato
+            for c in candidates:
+                Z = self.factorizations(c)
+                
+                for z in Z:
+                    # Verificamos si la factorización z es minimal en el ideal n + S
+                    is_minimal = True
+                    for i, coeff in enumerate(z):
+                        if coeff > 0:
+                            gen = min_gens[i]
+
+                            # Condición de minimalidad: si quitamos un generador (c - gen),  
+                            # y al restarle n el resultado sigue en S, entonces no era minimal.
+                            if (c - gen - n) in self:
+                                is_minimal = False
+                                break
+                    
+                    # Si pasa el filtro, actualizamos el máximo con su longitud
+                    if is_minimal:
+                        length = sum(z)
+                        if length > max_omega:
+                            max_omega = length
+                            
+            return max_omega
