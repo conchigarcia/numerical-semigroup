@@ -946,7 +946,7 @@ class NumericalSemigroup:
         aristas_arbol = set(frozenset((u, v)) for u, v in arbol.edges())
 
         # Posicionamiento de nodos
-        pos = nx.spring_layout(G, k=0.15, seed=42)
+        pos = nx.spring_layout(G, k=0.8, weight=None, iterations=50, seed=42)        
         fig = go.Figure()
 
         # Listas para separar visualmente: árbol (rojo) vs resto (gris)
@@ -959,8 +959,9 @@ class NumericalSemigroup:
             x1, y1 = pos[v]
 
             # Guardamos coordenadas para la etiqueta del peso
-            label_x.append((x0 + x1) / 2)
-            label_y.append((y0 + y1) / 2)
+            label_x.append(x0 + (x1 - x0) * 0.55)
+            label_y.append(y0 + (y1 - y0) * 0.55)
+            
             label_text.append(str(data['weight']))
             mensaje = f"La distancia entre {Z[u]} y {Z[v]} es {data['weight']}"
             hover_texts.append(mensaje)
@@ -997,7 +998,12 @@ class NumericalSemigroup:
                                  marker=dict(size=12, color='#636EFA', line=dict(width=2, color='DarkSlateGrey')),
                                  name='Factorizaciones'))
 
-        fig.update_layout(title=dict(text=f"Grafo de Factorizaciones de {n}", x=0.5, xanchor='center'),
+        x_values = [pos[n][0] for n in G.nodes()]
+        y_values = [pos[n][1] for n in G.nodes()]
+        x_margin = (max(x_values) - min(x_values)) * 0.2
+        y_margin = (max(y_values) - min(y_values)) * 0.2
+
+        fig.update_layout(title=dict(text=f"Grafo de catenariedad de {n}", x=0.5, xanchor='center'),
                           plot_bgcolor='white', showlegend=False,
                           xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                           yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
@@ -1055,7 +1061,7 @@ class NumericalSemigroup:
                     if min_dist > current_max:
                         current_max = min_dist
                 
-                # Actualizamos el grado de amansamiento total
+                # Actualizamos el grado de amansamiento global
                 if current_max > max_tame:
                     max_tame = current_max
                     
