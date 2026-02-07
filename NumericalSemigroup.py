@@ -542,7 +542,136 @@ class NumericalSemigroup:
             apery = [x for x in candidatos if (x - m) not in self]
 
             return tuple(apery)      
- 
+    
+    def plot_hasse_diagram(self, elems):
+        """
+        Dibuja el Diagrama de Hasse del conjunto 'elems' (orden inducido por S).
+        Soporta enteros (cota superior), listas, tuplas o conjuntos.
+        """
+        import networkx as nx
+        import plotly.graph_objects as go
+
+        # Preparamos elementos a representar
+        if isinstance(elems, int):
+            bound = elems
+            A = sorted([x for x in self.small_elements() if x <= bound])
+            if A[-1] < bound: # Completamos si falta hasta el bound
+                for x in range(A[-1] + 1, bound + 1):
+                    if x in self: A.append(x)
+        else:
+            # Maneja listas, tuplas y sets
+            A = sorted(list(set(elems)))
+            # -Comprobación de pertenencia
+            for x in A:
+                if x not in self:
+                    raise ValueError(f"El elemento {x} no pertenece al semigrupo. No se puede generar el diagrama.")
+
+
+        if not A:
+            raise ValueError("El conjunto de elementos es vacío. No se puede generar el diagrama.")
+
+        # Construimos grafo completo
+        G_full = nx.DiGraph()
+        G_full.add_nodes_from(A)
+        
+        # Añadimos aristas si b-a in S
+        for i in range(len(A)):
+            for j in range(i + 1, len(A)):
+                u, v = A[i], A[j]
+                if (v - u) in self:
+                    G_full.add_edge(u, v)
+
+        # Reducción transitiva 
+        G_hasse = nx.transitive_reduction(G_full)
+        G_hasse.add_nodes_from(A) # Recuperar nodos aislados
+
+        # Layout jerárquico
+        generations = {}
+        for node in A:
+            try:
+                # Nivel = camino más largo desde una raíz
+                ancestors = list(nx.ancestors(G_hasse, node))
+                if not ancestors:
+                    generations[node] = 0
+                else:
+                    path_len = 0
+                    for anc in ancestors:
+                         dist = nx.shortest_path_length(G_hasse, anc, node)
+                         if dist > path_len: path_len = dist
+                    generations[node] = path_len
+            except:
+                generations[node] = 0
+
+        # Asignar coordenadas (x: centrado, y: nivel)
+        pos = {}
+        nodes_by_gen = {}
+        for node, gen in generations.items():
+            if gen not in nodes_by_gen: nodes_by_gen[gen] = []
+            nodes_by_gen[gen].append(node)
+        
+        for gen, nodes in nodes_by_gen.items():
+            nodes.sort()
+            width = len(nodes)
+            for i, node in enumerate(nodes):
+                pos[node] = (i - (width - 1) / 2, gen * 1.5)
+
+        fig = go.Figure()
+
+        # A. Aristas
+        edge_x = []
+        edge_y = []
+        for edge in G_hasse.edges():
+            if edge[0] in pos and edge[1] in pos:
+                x0, y0 = pos[edge[0]]
+                x1, y1 = pos[edge[1]]
+                edge_x.extend([x0, x1, None])
+                edge_y.extend([y0, y1, None])
+
+        fig.add_trace(go.Scatter(
+            x=edge_x, y=edge_y,
+            mode='lines',
+            line=dict(width=1, color='#888'), 
+            hoverinfo='none',
+            showlegend=False
+        ))
+
+        # B. Nodos
+        node_x = []
+        node_y = []
+        node_text = []
+
+        for node in A:
+            if node in pos:
+                x, y = pos[node]
+                node_x.append(x)
+                node_y.append(y)
+                node_text.append(str(node))
+
+        fig.add_trace(go.Scatter(
+            x=node_x, y=node_y,
+            mode='markers+text',
+            text=node_text,
+            textposition="top center",
+            hoverinfo='text',
+            marker=dict(
+                size=14,
+                color='#636EFA',
+                line=dict(width=2, color='DarkSlateGrey')
+            ),
+            textfont=dict(size=12, color='black')
+        ))
+
+        fig.update_layout(
+            title=dict(text="Diagrama de Hasse (orden inducido)", x=0.5, xanchor='center'),
+            plot_bgcolor='white',
+            showlegend=False,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            margin=dict(b=20, l=5, r=5, t=50)
+        )
+
+        fig.show()
+    
     def factorizations(self, n):
         """
         Devuelve una tupla de tuplas con todas las formas de escribir n
