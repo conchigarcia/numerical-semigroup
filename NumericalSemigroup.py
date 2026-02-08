@@ -1,5 +1,6 @@
 import math
 import networkx as nx
+import numpy as np
 import plotly.graph_objects as go
 from pyvis.network import Network
 from sympy import symbols, groebner
@@ -47,11 +48,18 @@ def minimize_relations(relations_list):
     return minimal_gens
 
 def share_generator(f1, f2):
-        """
-        Devuelve True si dos factorizaciones usan algún generador común.
-        """
-        return any(a > 0 and b > 0 for a, b in zip(f1, f2))
-    
+    """
+    Devuelve True si dos factorizaciones usan algún generador común.
+    """
+    return any(a > 0 and b > 0 for a, b in zip(f1, f2))
+
+def distance(x, y):
+    """
+    Devuelve la distancia entre x e y: d(x,y) = max(|x|,|y|) - |x ∧ y|
+    """
+    common = [min(xi, yi) for xi, yi in zip(x, y)]
+    return max(sum(x), sum(y)) - sum(common)
+
 class NumericalSemigroup:
     def __init__(self, *args):
         """
@@ -533,8 +541,137 @@ class NumericalSemigroup:
             # Filtra: un candidato x pertenece a Apery(m) si x in S x - m not in en S
             apery = [x for x in candidatos if (x - m) not in self]
 
-            return tuple(apery)
+            return tuple(apery)      
+    
+    def plot_hasse_diagram(self, elems):
+        """
+        Dibuja el Diagrama de Hasse del conjunto 'elems' (orden inducido por S).
+        Soporta enteros (cota superior), listas, tuplas o conjuntos.
+        """
+        # Preparamos elementos a representar
+        if isinstance(elems, int):
+            bound = elems
+            A = sorted([x for x in self.small_elements() if x <= bound])
+            if A[-1] < bound: # Completamos si falta hasta el bound
+                for x in range(A[-1] + 1, bound + 1):
+                    if x in self: A.append(x)
+        else:
+            # Maneja listas, tuplas y sets
+            A = sorted(list(set(elems)))
+            # -Comprobación de pertenencia
+            for x in A:
+                if x not in self:
+                    raise ValueError(f"El elemento {x} no pertenece al semigrupo. No se puede generar el diagrama.")
+
+
+        if not A:
+            raise ValueError("El conjunto de elementos es vacío. No se puede generar el diagrama.")
+
+        # Construimos grafo
+        G_full = nx.DiGraph()
+        G_full.add_nodes_from(A)
         
+        # Añadimos aristas si b-a in S
+        for i in range(len(A)):
+            for j in range(i + 1, len(A)):
+                u, v = A[i], A[j]
+                if (v - u) in self:
+                    G_full.add_edge(u, v)
+
+        # Reducción transitiva 
+        G_hasse = nx.transitive_reduction(G_full)
+        G_hasse.add_nodes_from(A) # Recuperar nodos aislados
+
+        # Layout jerárquico
+        levels = {}
+        for node in A:
+            try:
+                # Nivel = camino más largo desde una raíz
+                ancestors = list(nx.ancestors(G_hasse, node))
+                if not ancestors:
+                    levels[node] = 0
+                else:
+                    path_len = 0
+                    for anc in ancestors:
+                         dist = nx.shortest_path_length(G_hasse, anc, node)
+                         if dist > path_len: path_len = dist
+                    levels[node] = path_len
+            except:
+                levels[node] = 0
+
+        # Asignar coordenadas (x: centrado, y: nivel)
+        pos = {}
+        nodes_by_level = {}
+        for node, level in levels.items():
+            if level not in nodes_by_level: nodes_by_level[level] = []
+            nodes_by_level[level].append(node)
+        
+        for level, nodes in nodes_by_level.items():
+            nodes.sort()
+            width = len(nodes)
+            for i, node in enumerate(nodes):
+                pos[node] = (i - (width - 1) / 2, level * 1.5)
+
+        fig = go.Figure()
+
+        # A. Aristas
+        edge_x = []
+        edge_y = []
+        for edge in G_hasse.edges():
+            if edge[0] in pos and edge[1] in pos:
+                x0, y0 = pos[edge[0]]
+                x1, y1 = pos[edge[1]]
+                edge_x.extend([x0, x1, None])
+                edge_y.extend([y0, y1, None])
+
+        fig.add_trace(go.Scatter(
+            x=edge_x, y=edge_y,
+            mode='lines',
+            line=dict(width=1, color='#888'), 
+            hoverinfo='none',
+            showlegend=False
+        ))
+
+        # B. Nodos
+        node_x = []
+        node_y = []
+        node_text = []
+
+        for node in A:
+            if node in pos:
+                x, y = pos[node]
+                node_x.append(x)
+                node_y.append(y)
+                node_text.append(str(node))
+
+        fig.add_trace(go.Scatter(
+            x=node_x, y=node_y,
+            mode='markers+text',
+            text=node_text,
+            textposition="top center",
+            hoverinfo='text',
+            marker=dict(
+                size=14,
+                color='#636EFA',
+                line=dict(width=2, color='DarkSlateGrey')
+            ),
+            textfont=dict(size=12, color='black')
+        ))
+
+        fig.update_layout(
+            width=400, 
+            height=350,  
+            autosize=False,
+            title=dict(text="Diagrama de Hasse (orden inducido)", x=0.5, xanchor='center'),
+            plot_bgcolor='white',
+            showlegend=False,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            margin=dict(b=20, l=5, r=5, t=50)
+        )
+
+        fig.show()
+    
     def factorizations(self, n):
         """
         Devuelve una tupla de tuplas con todas las formas de escribir n
@@ -700,6 +837,8 @@ class NumericalSemigroup:
 
             # C. Configuración final visual
             fig.update_layout(
+                width=400, 
+                height=350, 
                 title=dict(
                     text=f"Grafo de factorizaciones de {n} ({len(components)} R-clases)",
                     x=0.5,              # Posición horizontal (0.5 es el centro)
@@ -876,84 +1015,240 @@ class NumericalSemigroup:
                 
         return max_d
 
-    def distance(self, x, y):
-        """
-        Devuelve la distancia entre x e y d(x,y) = max(|x|,|y|) - |x ∧ y|
-        """
-        common = [min(xi, yi) for xi, yi in zip(x, y)]
-        return max(sum(x), sum(y)) - sum(common)
-
     def catenary_degree(self, n=None):
         """
         Calcula el grado de catenariedad.
          - Si se da n: calcula c(n).
-         - Si n es None: calcula c(S)
+         - Si n es None: calcula c(S).
         """
+        # Caso 1: grado de catenariedad del semigrupo
         if n is None:
-            bettis = self.betti_elements()
-            return max((self.catenary_degree(b) for b in bettis), default=0)
+            # Se devuelve elmáximo de los grados de catenariedad de los elementos de Betti
+            betti = self.betti_elements()
+            return max((self.catenary_degree(b) for b in betti), default=0)
+        
+        # Caso 2: grado de catenariedad de un elemento
+        else:
+            # Obtenemos las factorizaciones del elemento n
+            Z = self.factorizations(n)
+            n_facts = len(Z)
+            
+            # Si hay 0 o 1 factorización, el grado de catenariedad es 0
+            if n_facts <= 1:
+                return 0
+        
+            # Generamos todas las aristas posibles del grafo completo con pesos según la distancia entre factorizaciones
+            weighted_edges = []
+            for i in range(n_facts):
+                for j in range(i + 1, n_facts):
+                    d = distance(Z[i], Z[j])
+                    weighted_edges.append((i, j, d))
 
+            # Construimos el grafo con pesos
+            G = nx.Graph()
+            G.add_weighted_edges_from(weighted_edges)
+
+            # Calculamos el árbol generador de peso mínimo usando el algoritmo de Kruskal
+            mst = nx.minimum_spanning_tree(G, algorithm='kruskal')
+            
+            if not mst.edges:
+                return 0
+                
+            # El grado catenario es el peso máximo de ese árbol de expansión mínima
+            return max(data['weight'] for u, v, data in mst.edges(data=True))
+    
+    def plot_catenary_graph(self, n):
+        """
+        Dibuja el grafo completo de factorizaciones destacando el árbol generador de peso mínimo.
+        """
         Z = self.factorizations(n)
-        if len(Z) <= 1:
-            return 0
+        n_facts = len(Z)
 
-        dist = {}
-        distances = set()
-        idx = range(len(Z))
+        # Construimos el grafo completo con pesos según la distancia entre factorizaciones
+        G = nx.Graph()
+        for i in range(n_facts):
+            G.add_node(i, label=str(Z[i]))
+            for j in range(i + 1, n_facts):
+                d = distance(Z[i], Z[j])
+                G.add_edge(i, j, weight=d)
 
-        for i, j in itertools.combinations(idx, 2):
-            d = self.distance(Z[i], Z[j])
-            dist[(i, j)] = dist[(j, i)] = d
-            distances.add(d)
+        # Calculamos el árbol generador de peso mínimo
+        arbol = nx.minimum_spanning_tree(G, algorithm='kruskal')
+        aristas_arbol = set(frozenset((u, v)) for u, v in arbol.edges())
 
-        def is_connected(N):
-            visited = {0}
-            stack = [0]
-            while stack:
-                u = stack.pop()
-                for v in idx:
-                    if v not in visited and dist.get((u, v), 0) <= N:
-                        visited.add(v)
-                        stack.append(v)
-            return len(visited) == len(Z)
+        # Posicionamiento de nodos
+        pos = nx.spring_layout(G, k=0.8, weight=None, iterations=50, seed=42)        
+        fig = go.Figure()
 
-        for N in sorted(distances):
-            if is_connected(N):
-                return N
+        # Listas para separar visualmente: árbol (rojo) vs resto (gris)
+        x_rojo, y_rojo, x_gris, y_gris = [], [], [], []
+        label_x, label_y, label_text = [], [], []
+        hover_texts = []
 
-        return 0
+        for u, v, data in G.edges(data=True):
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
 
+            # Guardamos coordenadas para la etiqueta del peso
+            label_x.append(x0 + (x1 - x0) * 0.55)
+            label_y.append(y0 + (y1 - y0) * 0.55)
+            
+            label_text.append(str(data['weight']))
+            mensaje = f"La distancia entre {Z[u]} y {Z[v]} es {data['weight']}"
+            hover_texts.append(mensaje)
+
+            # Separamos las coordenadas según si es arista del árbol generador o no
+            if frozenset((u, v)) in aristas_arbol:
+                x_rojo.extend([x0, x1, None])
+                y_rojo.extend([y0, y1, None])
+            else:
+                x_gris.extend([x0, x1, None])
+                y_gris.extend([y0, y1, None])
+      
+        # Traza 1: aristas normales (gris)
+        fig.add_trace(go.Scatter(x=x_gris, y=y_gris, mode='lines',
+                                 line=dict(width=1, color='lightgrey'), hoverinfo='none'))
+
+        # Traza 2: aristas del árbol generador (rojo)
+        fig.add_trace(go.Scatter(x=x_rojo, y=y_rojo, mode='lines', name='Árbol Generador',
+                                 line=dict(width=2, color='#EF553B'), hoverinfo='name'))
+
+        # Traza 3: etiquetas de peso
+        fig.add_trace(go.Scatter(x=label_x, y=label_y, mode='text', text=label_text,
+                                 textposition="middle center", hovertext=hover_texts, hoverinfo='text',
+                                 textfont=dict(size=14, color='black'), 
+                                 showlegend=False))
+
+        # Traza 4: nodos
+        node_x = [pos[node][0] for node in G.nodes()]
+        node_y = [pos[node][1] for node in G.nodes()]
+        node_text = [G.nodes[node]['label'] for node in G.nodes()]
+
+        fig.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text',
+                                 text=node_text, textposition="top center", hoverinfo='text',
+                                 marker=dict(size=12, color='#636EFA', line=dict(width=2, color='DarkSlateGrey')),
+                                 name='Factorizaciones'))
+
+        x_values = [pos[n][0] for n in G.nodes()]
+        y_values = [pos[n][1] for n in G.nodes()]
+        x_margin = (max(x_values) - min(x_values)) * 0.2
+        y_margin = (max(y_values) - min(y_values)) * 0.2
+
+        fig.update_layout(width=550,
+                          height=450,
+                          title=dict(text=f"Grafo de catenariedad de {n}", x=0.5, xanchor='center'),
+                          plot_bgcolor='white', showlegend=False,
+                          xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                          yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+        fig.show()
+        
     def tame_degree(self, n=None):
-        """Grado de amansamiento t(n) o t(S)"""
+        """
+        Calcula el grado de amansamiento.
+         - Si se da n: calcula t(n).
+         - Si n es None: calcula t(S).
+        """  
+        min_gens = self.minimal_generators()
+
+        # Caso 1: grado de amansamiento del semigrupo
         if n is None:
-            gens = self.generators
-            t = 0
-            for i in range(len(gens)):
-                for j in range(len(gens)):
-                    if i != j:
-                        for w in self.apery(gens[j]):
-                            t = max(t, self.tame_degree(gens[i] + w))
-            return t
+            if 1 in min_gens: 
+                return 0
+            
+            # Obtenemos elementos de Apéry de todos los generadores
+            apery_union = set()
+            for g in min_gens:
+                apery_union.update(self.apery(g))
+            
+            # Generamos candidatos y devolvemos el máximo t(s)
+            candidates = {w + g for w in apery_union for g in min_gens}
+            if not candidates: 
+                return 0
+            
+            return max((self.tame_degree(c) for c in candidates), default=0)
 
-        Z = self.factorizations(n)
-        if not Z:
-            return 0
+        # Caso 2: grado de amansamiento de un elemento
+        else:
+            Z = self.factorizations(n)
+            if len(Z) <= 1:
+                return 0
+                
+            max_tame = 0
+            num_gens = len(min_gens)
+            
+            # Recorremos cada generador n_i, y calculamos t_i(n)
+            for i in range(num_gens):
+                # Dividimos Z: los que no usan el generador i (target) vs los que sí (rest)
+                target = [z for z in Z if z[i] == 0]
+                rest = [z for z in Z if z[i] != 0]
+                
+                # Si alguno de los subconjuntos es vacío, t_i(n) = 0
+                if not target or not rest: 
+                    continue
+                    
+                # Calculamos t_i(n) definido como el máximo de las distancias de x al conjunto rest.
+                current_max = 0
+                for x in target:
+                    min_dist = min(distance(x, z) for z in rest)
+                    # Actualizamos el máximo local encontrado para este generador
+                    if min_dist > current_max:
+                        current_max = min_dist
+                
+                # Actualizamos el grado de amansamiento global
+                if current_max > max_tame:
+                    max_tame = current_max
+                    
+            return max_tame
 
-        gens = self.generators
-        t_n = 0
+    def omega_primality(self, n=None):
+        """
+        Calcula la omega-primalidad.
+         - Si se da n: calcula omega(S, n).
+         - Si n es None: calcula omega(S).
+        """  
+        min_gens = self.minimal_generators()
 
-        for i in range(len(gens)):
-            Z_in  = [z for z in Z if z[i] > 0]
-            Z_out = [z for z in Z if z[i] == 0]
+        # Caso 1: omega-primalidad del semigrupo
+        if n is None:
+            # Definición global: máximo de la omega de los generadores minimales
+            return max((self.omega_primality(g) for g in min_gens), default=0)
 
-            if not Z_in or not Z_out:
-                continue
+        # Caso 2: omega-primalidad de un elemento n
+        else:
+            if n not in self:
+                raise ValueError(f"El elemento {n} no pertenece al semigrupo.")
+                
+            # Obtenemos la unión de los conjuntos de Apéry de todos los generadores minimales
+            apery_union = set()
+            for g in min_gens:
+                apery_union.update(self.apery(g))
+            
+            # Generamos candidatos: n + w, donde w está en la unión de los Apéry
+            candidates = {n + w for w in apery_union}
+            
+            max_omega = 0
+            
+            # Analizamos las factorizaciones de cada candidato
+            for c in candidates:
+                Z = self.factorizations(c)
+                
+                for z in Z:
+                    # Verificamos si la factorización z es minimal en el ideal n + S
+                    is_minimal = True
+                    for i, coeff in enumerate(z):
+                        if coeff > 0:
+                            gen = min_gens[i]
 
-            t_i = max(
-                min(self.distance(z_bad, z_good) for z_good in Z_in)
-                for z_bad in Z_out
-            )
-
-            t_n = max(t_n, t_i)
-
-        return t_n
+                            # Condición de minimalidad: si quitamos un generador (c - gen),  
+                            # y al restarle n el resultado sigue en S, entonces no era minimal.
+                            if (c - gen - n) in self:
+                                is_minimal = False
+                                break
+                    
+                    # Si pasa el filtro, actualizamos el máximo con su longitud
+                    if is_minimal:
+                        length = sum(z)
+                        if length > max_omega:
+                            max_omega = length
+                            
+            return max_omega
