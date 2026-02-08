@@ -659,6 +659,9 @@ class NumericalSemigroup:
         ))
 
         fig.update_layout(
+            width=400, 
+            height=350,  
+            autosize=False,
             title=dict(text="Diagrama de Hasse (orden inducido)", x=0.5, xanchor='center'),
             plot_bgcolor='white',
             showlegend=False,
@@ -834,6 +837,8 @@ class NumericalSemigroup:
 
             # C. Configuración final visual
             fig.update_layout(
+                width=400, 
+                height=350, 
                 title=dict(
                     text=f"Grafo de factorizaciones de {n} ({len(components)} R-clases)",
                     x=0.5,              # Posición horizontal (0.5 es el centro)
@@ -1129,7 +1134,9 @@ class NumericalSemigroup:
         x_margin = (max(x_values) - min(x_values)) * 0.2
         y_margin = (max(y_values) - min(y_values)) * 0.2
 
-        fig.update_layout(title=dict(text=f"Grafo de catenariedad de {n}", x=0.5, xanchor='center'),
+        fig.update_layout(width=550,
+                          height=450,
+                          title=dict(text=f"Grafo de catenariedad de {n}", x=0.5, xanchor='center'),
                           plot_bgcolor='white', showlegend=False,
                           xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                           yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
