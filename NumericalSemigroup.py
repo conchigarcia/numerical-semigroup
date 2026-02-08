@@ -548,9 +548,6 @@ class NumericalSemigroup:
         Dibuja el Diagrama de Hasse del conjunto 'elems' (orden inducido por S).
         Soporta enteros (cota superior), listas, tuplas o conjuntos.
         """
-        import networkx as nx
-        import plotly.graph_objects as go
-
         # Preparamos elementos a representar
         if isinstance(elems, int):
             bound = elems
@@ -570,7 +567,7 @@ class NumericalSemigroup:
         if not A:
             raise ValueError("El conjunto de elementos es vacío. No se puede generar el diagrama.")
 
-        # Construimos grafo completo
+        # Construimos grafo
         G_full = nx.DiGraph()
         G_full.add_nodes_from(A)
         
@@ -586,34 +583,34 @@ class NumericalSemigroup:
         G_hasse.add_nodes_from(A) # Recuperar nodos aislados
 
         # Layout jerárquico
-        generations = {}
+        levels = {}
         for node in A:
             try:
                 # Nivel = camino más largo desde una raíz
                 ancestors = list(nx.ancestors(G_hasse, node))
                 if not ancestors:
-                    generations[node] = 0
+                    levels[node] = 0
                 else:
                     path_len = 0
                     for anc in ancestors:
                          dist = nx.shortest_path_length(G_hasse, anc, node)
                          if dist > path_len: path_len = dist
-                    generations[node] = path_len
+                    levels[node] = path_len
             except:
-                generations[node] = 0
+                levels[node] = 0
 
         # Asignar coordenadas (x: centrado, y: nivel)
         pos = {}
-        nodes_by_gen = {}
-        for node, gen in generations.items():
-            if gen not in nodes_by_gen: nodes_by_gen[gen] = []
-            nodes_by_gen[gen].append(node)
+        nodes_by_level = {}
+        for node, level in levels.items():
+            if level not in nodes_by_level: nodes_by_level[level] = []
+            nodes_by_level[level].append(node)
         
-        for gen, nodes in nodes_by_gen.items():
+        for level, nodes in nodes_by_level.items():
             nodes.sort()
             width = len(nodes)
             for i, node in enumerate(nodes):
-                pos[node] = (i - (width - 1) / 2, gen * 1.5)
+                pos[node] = (i - (width - 1) / 2, level * 1.5)
 
         fig = go.Figure()
 
