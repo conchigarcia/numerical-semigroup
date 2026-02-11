@@ -4,9 +4,9 @@ A Python library designed for the analysis of **numerical semigroups**, focusing
 
 ## Repository contents
 
-* **`NumericalSemigroup.py`**: the main file containing the class definition and all the methods to compute invariants, factorizations, and visualizations.
-* **`Tutorial.ipynb`**: a Jupyter Notebook that explains how to define a numerical semigroup and demonstrates how to use all the methods implemented in the class.
-* **`requirements.txt`**: a text file listing all the necessary libraries to execute the code.
+* [`NumericalSemigroup.py`](NumericalSemigroup.py): the main file containing the class definition and all the methods to compute invariants, factorizations, and visualizations.
+* [`Tutorial.ipynb`](Tutorial.ipynb): a Jupyter Notebook that explains how to define a numerical semigroup and demonstrates how to use all the methods implemented in the class.
+* [`requirements.txt`](requirements.txt): a text file listing all the necessary libraries to execute the code.
 
 ## Installation
 
